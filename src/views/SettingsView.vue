@@ -109,6 +109,38 @@
         </div>
       </Card>
 
+      <!-- MCP 服务管理 -->
+      <Card class="p-5">
+        <h3 class="font-medium mb-4">MCP 服务管理</h3>
+        <div class="space-y-3">
+          <div v-for="server in mcpServers" :key="server.id" class="flex items-center justify-between border-b pb-2">
+            <div>
+              <div class="text-sm font-medium">{{ server.name }}</div>
+              <div class="text-xs text-gray-500">{{ server.url }}</div>
+              <span :class="server.connected ? 'text-green-500' : 'text-red-500'" class="text-xs">
+                {{ server.connected ? '已连接' : '未连接' }}
+              </span>
+            </div>
+            <button @click="deleteMcpServer(server.id)" class="text-red-500 text-sm">删除</button>
+          </div>
+          <div v-if="mcpServers.length === 0" class="text-gray-400 text-sm py-2">暂无 MCP 服务</div>
+        </div>
+        <div class="mt-4 flex items-end space-x-2">
+          <div class="flex-1">
+            <label class="block text-xs font-medium mb-1">名称</label>
+            <input v-model="newMcpName" class="input" placeholder="My MCP Server" />
+          </div>
+          <div class="flex-1">
+            <label class="block text-xs font-medium mb-1">URL</label>
+            <input v-model="newMcpUrl" class="input" placeholder="http://localhost:3000/mcp" />
+          </div>
+          <button @click="addMcpServer" :disabled="!newMcpName || !newMcpUrl" class="btn-primary text-sm px-3 py-2">
+            添加
+          </button>
+        </div>
+      </Card>
+
+
       <div class="flex justify-end space-x-3 pb-6">
         <button @click="resetToDefault" class="btn-secondary">重置为默认</button>
         <button @click="saveSettings" :disabled="saving" class="btn-primary">
@@ -125,6 +157,8 @@ import Card from '@/components/ui/Card.vue'
 import Toggle from '@/components/ui/Toggle.vue'
 import { settingsApi } from '@/api/settings'
 import { onBeforeRouteLeave } from 'vue-router'
+import { mcpApi } from '@/api/mcp'
+
 const saving = ref(false)
 
 const settings = ref({
@@ -177,8 +211,43 @@ const resetToDefault = () => {
   }
 }
 
+interface McpServer {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  connected: boolean
+}
+
+const mcpServers = ref<McpServer[]>([])
+const newMcpName = ref('')
+const newMcpUrl = ref('')
+
+const fetchServers = async () => {
+  const res = await mcpApi.listServers()
+  mcpServers.value = res.data.data || []
+}
+
+const addMcpServer = async () => {
+  if (!newMcpName.value || !newMcpUrl.value) return
+  await mcpApi.addServer(newMcpName.value, newMcpUrl.value)
+  newMcpName.value = ''
+  newMcpUrl.value = ''
+  await fetchServers()
+}
+
+const deleteMcpServer = async (id: string) => {
+  if (!confirm('确定删除？')) return
+  await mcpApi.deleteServer(id)
+  await fetchServers()
+}
+
+
+
+
 onMounted(() => {
   fetchSettings()
+  fetchServers()
 })
 
 const showCreateDrawer = ref(false)

@@ -9,17 +9,14 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    include: ['lucide-vue-next'],
+  },
   server: {
     port: 3000,
     proxy: {
-      '/api': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/ws': {
-        target: 'ws://localhost:8080',
-        ws: true,
-      },
+      '/api': { target: 'http://localhost:8080', changeOrigin: true },
+      '/ws': { target: 'ws://localhost:8080', ws: true },
     },
   },
 })

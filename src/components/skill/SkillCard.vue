@@ -1,25 +1,27 @@
 <template>
   <div class="card p-4 relative group">
-    <div class="flex items-start justify-between">
-      <div>
+    <!-- 顶部区域：名称、描述、开关 -->
+    <div class="flex items-start justify-between mb-3">
+      <div class="flex-1 pr-10">
         <h4 class="font-medium">{{ skill.name }}</h4>
-        <p class="text-xs text-text-secondary mt-0.5">{{ skill.description }}</p>
+        <p class="text-xs text-gray-500 mt-1">{{ skill.description }}</p>
       </div>
-      <Toggle :model-value="skill.enabled" @update:model-value="emit('toggle', skill, $event)" />
+      <Toggle :model-value="skill.enabled" @update:model-value="(v: boolean) => emit('toggle', skill, v)" />
     </div>
-    <div class="mt-3 flex items-center text-xs text-text-secondary space-x-3">
+
+    <!-- 版本和来源信息 -->
+    <div class="flex items-center text-xs text-gray-400 space-x-3 mb-2">
       <span>v{{ skill.version }}</span>
-      <span class="flex items-center">
-        <Tag class="w-3 h-3 mr-1" />
-        {{ sourceLabel }}
-      </span>
+      <span>来源：{{ sourceLabel }}</span>
     </div>
-    <div class="absolute top-2 right-8 opacity-0 group-hover:opacity-100 transition-opacity">
-      <button @click="emit('edit', skill)" class="p-1 rounded hover:bg-hover-bg">
-        <Edit class="w-4 h-4 text-text-secondary" />
+
+    <!-- 操作按钮（悬浮时显示，位于右下角） -->
+    <div class="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
+      <button @click="emit('edit', skill)" class="p-1.5 rounded hover:bg-gray-100" title="编辑">
+        <Edit :size="16" />
       </button>
-      <button @click="emit('delete', skill.id)" class="p-1 rounded hover:bg-hover-bg">
-        <Trash class="w-4 h-4 text-text-secondary" />
+      <button @click="emit('delete', skill.id)" class="p-1.5 rounded hover:bg-gray-100" title="删除">
+        <Trash :size="16" />
       </button>
     </div>
   </div>
@@ -27,9 +29,9 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Tag, Edit, Trash } from 'lucide-vue-next'
+import { Edit, Trash } from 'lucide-vue-next'
 import Toggle from '@/components/ui/Toggle.vue'
-import type { SkillConfig } from '@/types'
+import type { SkillConfig } from '@/api/skill'
 
 const props = defineProps<{ skill: SkillConfig }>()
 const emit = defineEmits<{
@@ -38,12 +40,10 @@ const emit = defineEmits<{
   (e: 'delete', id: string): void
 }>()
 
-const sourceLabel = computed(() => {
-  const map: Record<string, string> = {
-    builtin: '内置',
-    mcp: 'MCP',
-    custom: '自定义',
-  }
-  return map[props.skill.source] || props.skill.source
-})
+const sourceMap: Record<string, string> = {
+  builtin: '内置',
+  mcp: 'MCP',
+  custom: '自定义',
+}
+const sourceLabel = computed(() => sourceMap[props.skill.source] || props.skill.source)
 </script>

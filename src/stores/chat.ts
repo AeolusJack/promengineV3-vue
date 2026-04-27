@@ -137,6 +137,7 @@ export const useChatStore = defineStore('chat', () => {
     currentSessionId,
     messages: currentMessages,
     isLoading,
+    messagesMap,       // 新增
     fetchSessions,
     fetchMessages,
     switchSession,
