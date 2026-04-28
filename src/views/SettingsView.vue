@@ -1,13 +1,13 @@
 <template>
   <div class="h-full overflow-auto">
     <div class="max-w-3xl mx-auto space-y-6">
-      <h2 class="font-medium text-lg mb-4">配置中心</h2>
+      <h2 class="font-medium text-lg mb-4">{{ $t('settings.title') }}</h2>
 
       <Card class="p-5">
-        <h3 class="font-medium mb-4">模型网关</h3>
+        <h3 class="font-medium mb-4">{{ $t('settings.modelGateway') }}</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium mb-1">默认模型</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.defaultModel') }}</label>
             <select v-model="settings.models.defaultModel" class="w-full input">
               <option value="gemma4-custom:q4">Gemma4 (本地)</option>
               <option value="qwen2.5:14b">Qwen2.5 14B</option>
@@ -15,7 +15,7 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">路由策略</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.routingStrategy') }}</label>
             <select v-model="settings.models.routingStrategy" class="w-full input">
               <option value="semantic">语义路由</option>
               <option value="round-robin">轮询</option>
@@ -23,44 +23,44 @@
             </select>
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-sm">启用负载感知</span>
+            <span class="text-sm">{{ $t('settings.enableLoadAware') }}</span>
             <Toggle v-model="settings.models.loadAware" />
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">降级链</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.fallbackChain') }}</label>
             <input v-model="settings.models.fallbackChain" placeholder="siliconflow,aliyun-bailian,local-ollama" class="w-full input" />
           </div>
         </div>
       </Card>
 
       <Card class="p-5">
-        <h3 class="font-medium mb-4">记忆策略</h3>
+        <h3 class="font-medium mb-4">{{ $t('settings.memoryStrategy') }}</h3>
         <div class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium mb-1">遗忘衰减率</label>
+              <label class="block text-sm font-medium mb-1">{{ $t('settings.decayRate') }}</label>
               <input v-model.number="settings.memory.decayRate" type="number" step="0.01" min="0" max="1" class="w-full input" />
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1">最小强度阈值</label>
+              <label class="block text-sm font-medium mb-1">{{ $t('settings.minStrength') }}</label>
               <input v-model.number="settings.memory.minStrength" type="number" step="0.01" min="0" max="1" class="w-full input" />
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">衰减任务 Cron</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.decayCron') }}</label>
             <input v-model="settings.memory.decayCron" placeholder="0 0 3 * * ?" class="w-full input" />
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-sm">启用写入去重</span>
+            <span class="text-sm">{{ $t('settings.enableDeduplication') }}</span>
             <Toggle v-model="settings.memory.deduplicationEnabled" />
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium mb-1">默认检索数量</label>
+              <label class="block text-sm font-medium mb-1">{{ $t('settings.defaultTopK') }}</label>
               <input v-model.number="settings.memory.defaultTopK" type="number" min="1" max="50" class="w-full input" />
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1">已验证记忆权重</label>
+              <label class="block text-sm font-medium mb-1">{{ $t('settings.verifiedWeightBoost') }}</label>
               <input v-model.number="settings.memory.verifiedWeightBoost" type="number" step="0.1" min="1" max="3" class="w-full input" />
             </div>
           </div>
@@ -68,10 +68,10 @@
       </Card>
 
       <Card class="p-5">
-        <h3 class="font-medium mb-4">沙箱设置</h3>
+        <h3 class="font-medium mb-4">{{ $t('settings.sandbox') }}</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium mb-1">沙箱类型</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.sandboxType') }}</label>
             <select v-model="settings.sandbox.type" class="w-full input">
               <option value="WASM">WASM</option>
               <option value="DOCKER">Docker</option>
@@ -79,31 +79,31 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">工作区路径</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.workspacePath') }}</label>
             <input v-model="settings.sandbox.workspacePath" class="w-full input" />
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">Wasm模块路径</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.wasmModulesPath') }}</label>
             <input v-model="settings.sandbox.wasmModulesPath" class="w-full input" />
           </div>
         </div>
       </Card>
 
       <Card class="p-5">
-        <h3 class="font-medium mb-4">成本预算</h3>
+        <h3 class="font-medium mb-4">{{ $t('settings.costBudget') }}</h3>
         <div class="space-y-4">
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium mb-1">每日预算 ($)</label>
+              <label class="block text-sm font-medium mb-1">{{ $t('settings.dailyBudget') }}</label>
               <input v-model.number="settings.budget.daily" type="number" step="0.1" min="0" class="w-full input" />
             </div>
             <div>
-              <label class="block text-sm font-medium mb-1">每月预算 ($)</label>
+              <label class="block text-sm font-medium mb-1">{{ $t('settings.monthlyBudget') }}</label>
               <input v-model.number="settings.budget.monthly" type="number" step="0.1" min="0" class="w-full input" />
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">预警阈值</label>
+            <label class="block text-sm font-medium mb-1">{{ $t('settings.alertThresholds') }}</label>
             <input v-model="settings.budget.alertThresholds" placeholder="0.8,0.95" class="w-full input" />
           </div>
         </div>
@@ -111,7 +111,7 @@
 
       <!-- MCP 服务管理 -->
       <Card class="p-5">
-        <h3 class="font-medium mb-4">MCP 服务管理</h3>
+        <h3 class="font-medium mb-4">{{ $t('settings.mcpServers') }}</h3>
         <div class="space-y-3">
           <div v-for="server in mcpServers" :key="server.id" class="flex items-center justify-between border-b pb-2">
             <div>
@@ -127,15 +127,15 @@
         </div>
         <div class="mt-4 flex items-end space-x-2">
           <div class="flex-1">
-            <label class="block text-xs font-medium mb-1">名称</label>
+            <label class="block text-xs font-medium mb-1">{{ $t('settings.serverName') }}</label>
             <input v-model="newMcpName" class="input" placeholder="My MCP Server" />
           </div>
           <div class="flex-1">
-            <label class="block text-xs font-medium mb-1">URL</label>
+            <label class="block text-xs font-medium mb-1">{{ $t('settings.serverUrl') }}</label>
             <input v-model="newMcpUrl" class="input" placeholder="http://localhost:3000/mcp" />
           </div>
           <button @click="addMcpServer" :disabled="!newMcpName || !newMcpUrl" class="btn-primary text-sm px-3 py-2">
-            添加
+            {{ $t('settings.addServer') }}
           </button>
         </div>
       </Card>

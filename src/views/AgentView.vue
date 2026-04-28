@@ -19,7 +19,7 @@
         @click="showCreateDrawer = true"
         class="ml-auto btn-primary text-sm px-3 py-1.5"
       >
-        + 新建Agent
+        {{ $t('agent.createAgent') }}
       </button>
     </div>
 
@@ -40,25 +40,25 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AgentListView from '@/components/agent/AgentListView.vue'
 import AgentGroupView from '@/components/agent/AgentGroupView.vue'
 import AgentDrawer from '@/components/agent/AgentDrawer.vue'
 import { useAgentStore } from '@/stores/agent'
-import type { AgentConfig } from '@/types'
+import type { AgentConfig } from '@/api/agent'
 
-const tabs = [
-  { id: 'list', name: 'Agent列表', component: AgentListView },
-  { id: 'group', name: '群聊', component: AgentGroupView },
-]
+const { t } = useI18n()
+const store = useAgentStore()
+
+const tabs = computed(() => [
+  { id: 'list', name: t('agent.list'), component: AgentListView },
+  { id: 'group', name: t('agent.group'), component: AgentGroupView },
+])
 const activeTab = ref('list')
 const showCreateDrawer = ref(false)
 const editingAgent = ref<AgentConfig | null>(null)
 
-const store = useAgentStore()
-
-const currentComponent = computed(() => {
-  return tabs.find(t => t.id === activeTab.value)?.component
-})
+const currentComponent = computed(() => tabs.value.find(t => t.id === activeTab.value)?.component)
 
 onMounted(() => {
   store.fetchAgents()
@@ -70,12 +70,17 @@ const closeDrawer = () => {
 }
 
 const handleSave = async (data: Partial<AgentConfig>) => {
-  if (editingAgent.value) {
-    await store.updateAgent(editingAgent.value.id, data)
-  } else {
-    await store.createAgent(data)
+  try {
+    if (editingAgent.value) {
+      await store.updateAgent(editingAgent.value.id, data)
+    } else {
+      await store.createAgent(data)
+    }
+  } catch (e) {
+    console.error('Save agent failed', e)
+  } finally {
+    closeDrawer()
   }
-  closeDrawer()
 }
 
 const openEditAgent = (agent: AgentConfig) => {

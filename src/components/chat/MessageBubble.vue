@@ -9,25 +9,54 @@
             : 'bg-white border-border-light',
         ]"
       >
-        <div class="whitespace-pre-wrap break-words text-sm">{{ message.content }}</div>
+        <!-- 助手：Markdown 渲染（整体渲染） -->
+        <div
+          v-if="message.role === 'assistant'"
+          class="prose prose-sm max-w-none"
+          v-html="safeContent"
+        ></div>
+
+        <!-- 用户：纯文本 -->
+        <div v-else class="whitespace-pre-wrap break-words text-sm">
+          {{ message.content }}
+        </div>
+
+        <!-- 思考轨迹（仅助手） -->
         <div v-if="message.role === 'assistant'" class="mt-2">
           <button
             @click="showThinking = !showThinking"
             class="text-xs text-text-secondary hover:text-primary flex items-center"
           >
             <Brain class="w-3 h-3 mr-1" />
-            思考轨迹
+            {{ $t('thinking.trace') }}
           </button>
-          <div v-if="showThinking" class="mt-3 pt-3 border-t border-border-light text-xs space-y-1">
+          <div
+            v-if="showThinking"
+            class="mt-3 pt-3 border-t border-border-light text-xs space-y-1"
+          >
             <div class="text-text-secondary">
-              记忆检索：{{ message.thinkingTrace?.memoriesRetrieved || 0 }} 条
+              {{
+                $t('thinking.memoriesRetrieved', {
+                  count: message.thinkingTrace?.memoriesRetrieved || 0,
+                })
+              }}
             </div>
             <div v-if="message.toolCalls?.length">
-              <div class="text-text-secondary mb-1">工具调用：</div>
-              <div v-for="tc in message.toolCalls" :key="tc.name" class="ml-2">
+              <div class="text-text-secondary mb-1">
+                {{ $t('thinking.toolCalls') }}
+              </div>
+              <div
+                v-for="tc in message.toolCalls"
+                :key="tc.name"
+                class="ml-2"
+              >
                 <span class="font-mono text-primary">{{ tc.name }}</span>
-                <span class="text-text-secondary ml-1">{{ formatArgs(tc.arguments) }}</span>
-                <div v-if="tc.result" class="text-green-600 truncate">→ {{ tc.result }}</div>
+                <span class="text-text-secondary ml-1">
+                  {{ formatArgs(tc.arguments) }}
+                </span>
+                <div v-if="tc.result" class="text-green-600 truncate">
+                  {{ $t('thinking.resultArrow') }}{{ tc.result }}
+                </div>
               </div>
             </div>
             <div v-if="message.thinkingTrace?.rippleEvents?.length">
@@ -36,8 +65,11 @@
           </div>
         </div>
       </div>
+
       <!-- 操作菜单 -->
-      <div class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div
+        class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
+      >
         <ContentActionMenu
           :content="message.content"
           :message-id="message.id"
@@ -52,11 +84,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Brain } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 import type { Message } from '@/types'
 import ContentActionMenu from './ContentActionMenu.vue'
 import RippleChart from './RippleChart.vue'
+import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   message: Message
@@ -69,7 +103,11 @@ const emit = defineEmits<{
   (e: 'share', messageId: string): void
 }>()
 
+const { t } = useI18n()
 const showThinking = ref(false)
+
+// 整体渲染
+const safeContent = computed(() => renderMarkdown(props.message.content))
 
 const formatArgs = (args: Record<string, any>) => {
   const str = JSON.stringify(args)

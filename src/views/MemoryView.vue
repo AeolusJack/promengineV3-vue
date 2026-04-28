@@ -25,13 +25,17 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import LayerBrowser from '@/components/memory/LayerBrowser.vue'
 import RetrievalDebugger from '@/components/memory/RetrievalDebugger.vue'
 import QualityWorkshop from '@/components/memory/QualityWorkshop.vue'
 import { onBeforeRouteLeave } from 'vue-router'
 
 import { useMemoryStore } from '@/stores/memory'
+import { useI18n } from 'vue-i18n'
+
+
+const { t } = useI18n()
 
 const memoryStore = useMemoryStore()
 
@@ -41,11 +45,12 @@ onMounted(async () => {
 })
 
 
-const tabs = [
-  { id: 'layer', name: '分层浏览' },
-  { id: 'debug', name: '检索调试' },
-  { id: 'quality', name: '质量工坊' },
-]
+//  将 tabs 改为 computed，使其响应语言变化
+const tabs = computed(() => [
+  { id: 'layer', name: t('memory.tabLayerBrowser') },
+  { id: 'debug', name: t('memory.tabRetrievalDebug') },
+  { id: 'quality', name: t('memory.tabQualityWorkshop') },
+])
 const activeTab = ref('layer')
 
 const showCreateDrawer = ref(false)

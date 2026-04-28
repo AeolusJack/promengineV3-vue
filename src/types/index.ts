@@ -47,3 +47,20 @@ export interface MemoryEntry {
   sharingLevel: string
   metadata?: Record<string, any>
 }
+
+export interface GroupMessage {
+  id: string
+  role: 'user' | 'agent' | 'system'
+  content: string
+  agentId?: string
+  agentName?: string
+  avatar?: string
+  timestamp: number
+}
+
+export interface GroupAgent {
+  agentId: string
+  name: string
+  avatar?: string
+  role?: string
+}
