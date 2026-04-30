@@ -8,7 +8,7 @@
       </div>
       <div class="space-y-1">
         <button
-          v-for="group in (groups || [])"
+          v-for="group in groups"
           :key="group.id"
           @click="selectGroup(group)"
           :class="[
@@ -46,7 +46,7 @@
               {{ $t('agent.stop') }}
             </button>
             <button
-              v-else-if="currentGroup.status === 'paused'"
+              v-else
               @click="startDiscussion"
               class="btn-primary text-sm px-3 py-1"
             >
@@ -67,7 +67,7 @@
             v-for="msg in messages"
             :key="msg.id"
             :message="msg"
-            :agents="currentGroup.agents"
+            :agents="currentGroup.agents || []"
           />
         </div>
 
@@ -97,7 +97,7 @@
       <div class="text-xs text-text-secondary uppercase tracking-wider mb-2">{{ $t('agent.members') }}</div>
       <div class="space-y-2">
         <div v-for="agent in currentGroup.agents" :key="agent.agentId" class="flex items-center">
-          <AgentAvatar :agent="{ ...agent, avatar: agent.avatar } as any" size="sm" class="mr-2" />
+          <AgentAvatar :agent="agent as any" size="sm" class="mr-2" />
           <div>
             <div class="text-sm">{{ agent.name }}</div>
             <div class="text-xs text-text-secondary">{{ agent.role || '成员' }}</div>
@@ -159,18 +159,22 @@ const connectGroupWs = (groupId: string) => {
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data)
-      // 只处理群聊消息
       if (data.type !== 'group-message') return
 
-      const agent = currentGroup.value?.agents.find(a => a.agentId === data.agentId)
+      const agentsList = currentGroup.value?.agents || []
+      const agent = agentsList.find(a => a.agentId === data.agentId)
+
+      // 优先使用推送中的 agentName，其次从群成员中查找
+      const agentName = data.agentName || agent?.name || data.agentId
+
       const msg: GroupMessage = {
         id: crypto.randomUUID(),
         role: 'agent',
         content: data.text,
         timestamp: Date.now(),
         agentId: data.agentId,
-        agentName: agent?.name || data.agentId,
-        avatar: agent?.avatar,
+        agentName,
+        avatar: data.avatar || agent?.avatar,
       }
       store.addGroupMessage(msg)
       scrollToBottom()
@@ -179,8 +183,8 @@ const connectGroupWs = (groupId: string) => {
     }
   }
 
-  ws.onclose = (event) => {
-    console.log('🔌 Group WebSocket closed:', event.reason || '')
+  ws.onclose = () => {
+    console.log('🔌 Group WebSocket closed')
     groupSocket = null
   }
 
@@ -203,9 +207,7 @@ watch(() => currentGroup.value?.id, (newId, oldId) => {
   if (newId) connectGroupWs(newId)
 })
 
-onUnmounted(() => {
-  disconnectGroupWs()
-})
+onUnmounted(() => disconnectGroupWs())
 
 // ---------- 群聊逻辑 ----------
 const mapGroupStatus = (status: AgentGroup['status']): 'active' | 'resting' | 'inactive' => {
@@ -214,24 +216,39 @@ const mapGroupStatus = (status: AgentGroup['status']): 'active' | 'resting' | 'i
   return 'inactive'
 }
 
+const refreshCurrentGroup = async () => {
+  if (!currentGroup.value) return
+  await store.fetchGroups()
+  const groupId = currentGroup.value.id
+  const updated = store.groups.find(g => g.id === groupId)
+  if (updated) store.currentGroup = { ...updated }
+  else store.currentGroup = null
+}
+
 const selectGroup = async (group: AgentGroup) => {
-  store.currentGroup = group
+  store.currentGroup = { ...group, agents: group.agents || [] }
   await store.fetchGroupMessages(group.id)
   scrollToBottom()
 }
 
-const startDiscussion = () => {
-  if (currentGroup.value) store.startDiscussion(currentGroup.value.id)
+const startDiscussion = async () => {
+  if (!currentGroup.value) return
+  await store.startDiscussion(currentGroup.value.id)
+  await refreshCurrentGroup()
 }
-const stopDiscussion = () => {
-  if (currentGroup.value) store.stopDiscussion(currentGroup.value.id)
+
+const stopDiscussion = async () => {
+  if (!currentGroup.value) return
+  await store.stopDiscussion(currentGroup.value.id)
+  await refreshCurrentGroup()
 }
-const nextRound = () => {
-  if (currentGroup.value) {
-    store.nextRound(currentGroup.value.id)
-    scrollToBottom()
-  }
+
+const nextRound = async () => {
+  if (!currentGroup.value) return
+  await store.nextRound(currentGroup.value.id)
+  scrollToBottom()
 }
+
 const sendMessage = async () => {
   if (!inputMessage.value.trim() || !currentGroup.value) return
   await store.sendGroupMessage(currentGroup.value.id, inputMessage.value.trim())

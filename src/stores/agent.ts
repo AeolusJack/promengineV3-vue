@@ -11,14 +11,14 @@ export const useAgentStore = defineStore('agent', () => {
   const loading = ref(false)
 
   const extractData = (res: any) => {
-    // 后端统一格式 { success, data, error }
     const body = res.data
-    if (body && body.success) {
-      return body.data
-    }
-    return body  // 兼容其他格式
+    if (body && body.success === true) return body.data
+    // 兼容旧格式或直接返回数组/对象
+    if (Array.isArray(body)) return body
+    return body?.data || body
   }
 
+  // Agent 相关方法（略，保持不变）...
   const fetchAgents = async () => {
     const res = await agentApi.list()
     agents.value = extractData(res) || []
@@ -52,6 +52,7 @@ export const useAgentStore = defineStore('agent', () => {
     agents.value = agents.value.filter(a => a.id !== id)
   }
 
+  // 群组相关
   const fetchGroups = async () => {
     const res = await agentApi.listGroups()
     groups.value = extractData(res) || []
@@ -66,7 +67,8 @@ export const useAgentStore = defineStore('agent', () => {
 
   const fetchGroupMessages = async (groupId: string) => {
     const res = await agentApi.getGroupMessages(groupId)
-    groupMessages.value = extractData(res) || []
+    const messages = extractData(res) || []
+    groupMessages.value = messages
   }
 
   const sendGroupMessage = async (groupId: string, message: string) => {
@@ -74,6 +76,11 @@ export const useAgentStore = defineStore('agent', () => {
     const msg = extractData(res)
     if (msg) groupMessages.value.push(msg)
     return msg
+  }
+
+  // 新增：直接追加消息（WebSocket 推送）
+  const addGroupMessage = (msg: GroupMessage) => {
+    groupMessages.value.push(msg)
   }
 
   const startDiscussion = async (groupId: string) => {
@@ -88,12 +95,6 @@ export const useAgentStore = defineStore('agent', () => {
   const stopDiscussion = async (groupId: string) => {
     await agentApi.stopDiscussion(groupId)
   }
-  
-
-  // 新增：直接添加一条群组消息（用于 WebSocket 推送）
-  const addGroupMessage = (msg: GroupMessage) => {
-    groupMessages.value.push(msg)
-  }
 
   return {
     agents,
@@ -101,7 +102,6 @@ export const useAgentStore = defineStore('agent', () => {
     currentGroup,
     groupMessages,
     loading,
-    addGroupMessage,
     fetchAgents,
     toggleAgent,
     createAgent,
@@ -111,6 +111,7 @@ export const useAgentStore = defineStore('agent', () => {
     createGroup,
     fetchGroupMessages,
     sendGroupMessage,
+    addGroupMessage,
     startDiscussion,
     nextRound,
     stopDiscussion,
