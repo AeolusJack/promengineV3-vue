@@ -10,13 +10,12 @@ export const useMemoryStore = defineStore('memory', () => {
   const total = ref(0)
   const loading = ref(false)
   const selectedMemories = ref<string[]>([])
-  const layerCounts = ref<Record<string, number>>({})   // 必须定义
+  const layerCounts = ref<Record<string, number>>({})
 
   const fetchLayers = async () => {
     try {
-      const res = await memoryApi.getLayers()
-      layers.value = res.data.layers || []
-      // 初始化各层计数为0
+      const data = await memoryApi.getLayers()
+      layers.value = data.layers || []
       const counts: Record<string, number> = {}
       for (const layer of layers.value) {
         counts[layer] = 0
@@ -31,8 +30,8 @@ export const useMemoryStore = defineStore('memory', () => {
   const fetchLayerCounts = async () => {
     for (const layer of layers.value) {
       try {
-        const res = await memoryApi.getMemoriesByLayer(layer, { page: 1, size: 1 })
-        layerCounts.value[layer] = res.data.total || 0
+        const data = await memoryApi.getMemoriesByLayer(layer, { page: 1, size: 1 })
+        layerCounts.value[layer] = data.total || 0
       } catch (e) {
         layerCounts.value[layer] = 0
       }
@@ -42,9 +41,9 @@ export const useMemoryStore = defineStore('memory', () => {
   const fetchMemories = async (params?: { page?: number; size?: number; keyword?: string }) => {
     loading.value = true
     try {
-      const res = await memoryApi.getMemoriesByLayer(currentLayer.value, params)
-      memories.value = res.data.data || []
-      total.value = res.data.total || 0
+      const data = await memoryApi.getMemoriesByLayer(currentLayer.value, params)
+      memories.value = data.data || []
+      total.value = data.total || 0
     } catch (e) {
       console.error('获取记忆失败', e)
       memories.value = []
@@ -56,7 +55,7 @@ export const useMemoryStore = defineStore('memory', () => {
 
   const markQuality = async (id: string, action: 'good' | 'bad') => {
     await memoryApi.markQuality(id, action)
-    await fetchMemories()
+    await fetchMemories()   // 标记后自动刷新列表
   }
 
   const batchMarkQuality = async (ids: string[], action: 'good' | 'bad') => {
@@ -77,9 +76,9 @@ export const useMemoryStore = defineStore('memory', () => {
     total,
     loading,
     selectedMemories,
-    layerCounts,                // 导出
+    layerCounts,
     fetchLayers,
-    fetchLayerCounts,           // 导出
+    fetchLayerCounts,
     fetchMemories,
     markQuality,
     batchMarkQuality,

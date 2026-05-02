@@ -64,28 +64,30 @@
               </td>
               <td class="py-2 text-text-secondary">{{ formatTime(mem.timestamp) }}</td>
               <td class="py-2">
-                <div class="flex items-center">
-                  <div class="w-16 h-1.5 bg-gray-200 rounded-full mr-2">
-                    <div
-                      class="h-full rounded-full"
-                      :class="strengthColor(mem.strength || 0)"
-                      :style="{ width: `${(mem.strength || 0) * 100}%` }"
-                    ></div>
-                  </div>
-                  <span class="text-xs text-text-secondary">{{ ((mem.strength || 0) * 100).toFixed(0) }}%</span>
+              <div class="flex items-center">
+                <div class="w-16 h-1.5 bg-gray-200 rounded-full mr-2">
+                  <div
+                    class="h-full rounded-full"
+                    :class="strengthColor(mem.strength ?? 0)"
+                    :style="{ width: `${(mem.strength ?? 0) * 100}%` }"
+                  ></div>
                 </div>
-              </td>
+                <span class="text-xs text-text-secondary">
+                  {{ ((mem.strength ?? 0) * 100).toFixed(0) }}%
+                </span>
+              </div>
+            </td>
               <td class="py-2">
                 <div class="flex items-center">
                   <Star
                     :class="[
                       'w-4 h-4',
-                      (mem.utilityScore || 0) >= 0.7
+                      (mem.utilityScore ?? 0) >= 0.7
                         ? 'text-yellow-500 fill-yellow-500'
                         : 'text-text-secondary',
                     ]"
                   />
-                  <span class="ml-1 text-xs">{{ (mem.utilityScore || 0).toFixed(1) }}</span>
+                  <span class="ml-1 text-xs">{{ (mem.utilityScore ?? 0).toFixed(1) }}</span>
                 </div>
               </td>
               <td class="py-2" @click.stop>

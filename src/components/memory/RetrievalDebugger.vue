@@ -21,10 +21,11 @@
 
     <div v-if="result" class="flex-1 overflow-auto space-y-4">
       <div class="grid grid-cols-2 gap-4">
-        <SourceCard title="热存储" :hits="result.hotHits" />
-        <SourceCard title="Lucene" :hits="result.luceneHits" />
-        <SourceCard title="向量检索" :hits="result.vectorHits" />
-        <SourceCard title="知识图谱" :hits="result.graphHits" />
+        <SourceCard title="工作记忆" :hits="result.workingHits || []" />
+        <SourceCard title="情景记忆" :hits="result.episodicHits || []" />
+        <SourceCard title="Lucene" :hits="result.luceneHits || []" />
+        <SourceCard title="向量检索" :hits="result.vectorHits || []" />
+        <SourceCard title="知识图谱" :hits="result.graphHits || []" />
       </div>
 
       <div class="card p-4">
@@ -73,8 +74,10 @@ const debug = async () => {
   if (!query.value.trim()) return
   loading.value = true
   try {
-    const res = await memoryApi.debugRetrieval(query.value.trim())
-    result.value = res.data
+    // 现在 debugRetrieval 直接返回 RetrievalDebugResult，无需再 .data
+    result.value = await memoryApi.debugRetrieval(query.value.trim())
+  } catch (e) {
+    console.error(e)
   } finally {
     loading.value = false
   }

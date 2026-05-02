@@ -41,9 +41,9 @@ export interface MemoryEntry {
   memoryType: string
   layer: string
   domain: string
-  strength: number
-  utilityScore: number
-  safetyScore: number
+  strength: number          // 确保存在且为 number
+  utilityScore: number      // 确保存在且为 number
+  safetyScore: number       // 确保存在且为 number
   sharingLevel: string
   metadata?: Record<string, any>
 }

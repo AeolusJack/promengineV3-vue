@@ -1,3 +1,4 @@
+<!-- src/components/memory/SourceCard.vue -->
 <template>
   <div class="card p-4">
     <div class="flex items-center justify-between mb-3">
@@ -24,8 +25,11 @@
 <script setup lang="ts">
 import type { MemoryEntry } from '@/types'
 
-defineProps<{
+// 使用 withDefaults 确保 hits 永远不为 undefined
+const props = withDefaults(defineProps<{
   title: string
-  hits: MemoryEntry[]
-}>()
+  hits?: MemoryEntry[]
+}>(), {
+  hits: () => []
+})
 </script>

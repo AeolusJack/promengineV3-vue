@@ -1,56 +1,67 @@
 import client from './client'
+import type { MemoryEntry } from '@/types'
 
-export interface MemoryEntry {
-  id: string
-  userId: string
-  content: string
-  summary: string
-  timestamp: number
-  memoryType: string
-  layer: string
-  domain: string
-  strength: number
-  utilityScore: number
-  safetyScore: number
-  metadata: Record<string, any>
+export interface FusedHit extends MemoryEntry {
+  _score?: number
+  _source?: string
 }
 
 export interface RetrievalDebugResult {
-  hotHits: MemoryEntry[]
+  workingHits: MemoryEntry[]
+  episodicHits: MemoryEntry[]
   luceneHits: MemoryEntry[]
   vectorHits: MemoryEntry[]
   graphHits: MemoryEntry[]
-  fusedHits: MemoryEntry[]
+  fusedHits: FusedHit[]
   tookMs: number
 }
 
-
+// ════════════════ 解包工具函数 ════════════════
+function unwrap<T>(res: any): T {
+  const body = res?.data
+  if (body && typeof body === 'object' && 'success' in body) {
+    return body.success ? (body.data as T) : (null as any)
+  }
+  return body as T
+}
 
 export const memoryApi = {
 
-    remember: (content: string, metadata?: Record<string, any>) =>
+  // 写入记忆
+  remember: (content: string, metadata?: Record<string, any>) =>
     client.post('/memory/remember', { content, metadata }),
-   recall: (query: string, domain?: string, maxResults?: number) =>
+
+  // 召回记忆
+  recall: (query: string, domain?: string, maxResults?: number) =>
     client.post('/memory/recall', { text: query, domain, maxResults }),
-  // ... 已有方法
 
-  // 分层浏览
-getLayers: () => client.get<{ layers: string[]; counts: Record<string, number> }>('/memory/layers'),
+  // 获取层级列表
+  getLayers: (): Promise<{ layers: string[]; counts: Record<string, number> }> =>
+    client.get('/memory/layers').then(unwrap),
 
-  getMemoriesByLayer: (layer: string, params?: { page?: number; size?: number; keyword?: string }) =>
-    client.get<{ data: MemoryEntry[]; total: number }>(`/memory/layer/${layer}`, { params }),
+  // 分页关键词查询（分层浏览的核心）
+  getMemoriesByLayer: (
+    layer: string,
+    params?: { page?: number; size?: number; keyword?: string }
+  ): Promise<{ data: MemoryEntry[]; total: number }> =>
+    client.get(`/memory/layer/${layer}`, { params }).then(unwrap),
 
   // 质量标注
   markQuality: (id: string, action: 'good' | 'bad') =>
     client.post(`/memory/${id}/quality`, { action }),
+
   batchMarkQuality: (ids: string[], action: 'good' | 'bad') =>
     client.post('/memory/quality/batch', { ids, action }),
-  convertToProcedural: (id: string) => client.post(`/memory/${id}/convert-to-procedural`),
+
+  // 转化为过程记忆
+  convertToProcedural: (id: string) =>
+    client.post(`/memory/${id}/convert-to-procedural`),
 
   // 检索调试
-  debugRetrieval: (query: string, domain?: string, topK?: number) =>
-    client.post<RetrievalDebugResult>('/memory/retrieval/debug', { query, domain, topK }),
+  debugRetrieval: (query: string, domain?: string, topK?: number): Promise<RetrievalDebugResult> =>
+    client.post('/memory/retrieval/debug', { query, domain, topK }).then(unwrap),
 
   // 遗忘曲线
-  getDecayCurve: (id: string) => client.get<{ points: { days: number; strength: number }[] }>(`/memory/${id}/decay-curve`),
+  getDecayCurve: (id: string): Promise<{ points: { days: number; strength: number }[] }> =>
+    client.get(`/memory/${id}/decay-curve`).then(unwrap),
 }

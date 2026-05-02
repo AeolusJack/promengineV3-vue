@@ -71,7 +71,11 @@
             <td class="py-2 truncate max-w-md">{{ mem.summary || mem.content }}</td>
             <td class="py-2 text-green-600">{{ mem.utilityScore?.toFixed(2) }}</td>
             <td class="py-2">
-              <button @click="convert(mem.id)" class="text-primary text-xs hover:underline">
+              <button
+                v-if="mem.layer !== 'procedural'"
+                @click="convert(mem.id)"
+                class="text-primary text-xs hover:underline"
+              >
                 转化为过程记忆
               </button>
             </td>
@@ -110,15 +114,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { AlertCircle, Star, TrendingDown } from 'lucide-vue-next'
 import * as echarts from 'echarts'
 import { useMemoryStore } from '@/stores/memory'
 import { memoryApi } from '@/api/memory'
 
+
+
 const store = useMemoryStore()
 const { memories } = storeToRefs(store)   // ✅ 保持响应性
+
+const markGood = (id: string) => store.markQuality(id, 'good')
+const markBad  = (id: string) => store.markQuality(id, 'bad')
+
 
 const pendingSelected = ref<string[]>([])
 const pendingSelectAll = ref(false)
@@ -147,8 +157,6 @@ const togglePendingSelectAll = () => {
   }
 }
 
-const markGood = (id: string) => store.markQuality(id, 'good')
-const markBad = (id: string) => store.markQuality(id, 'bad')
 const convert = (id: string) => store.convertToProcedural(id)
 
 const batchMarkGood = () => {
@@ -162,33 +170,52 @@ const batchMarkBad = () => {
 }
 
 const loadDecayCurve = async () => {
-  if (!selectedMemoryId.value) return
-  const res = await memoryApi.getDecayCurve(selectedMemoryId.value)
-  decayData.value = res.data.points
-  renderChart()
-}
+   if (!selectedMemoryId.value) return;
+   try {
+       const response = await memoryApi.getDecayCurve(selectedMemoryId.value);
+       // response 已经是 { points: [...] }
+       decayData.value = response.points || [];
+       await nextTick();          // 等待 DOM 更新
+       renderChart();
+   } catch (e) {
+       console.error('获取遗忘曲线失败', e);
+       decayData.value = [];      // 置空，防止上次数据残留
+   }
+};
 
+// 监听数据变化重新绘制
+watch(decayData, () => {
+    if (decayData.value) {
+        nextTick(() => renderChart());
+    }
+});
 const renderChart = () => {
-  if (!chartRef.value || !decayData.value) return
-  if (!chartInstance) {
-    chartInstance = echarts.init(chartRef.value)
-  }
-  const days = decayData.value.map(d => d.days)
-  const strengths = decayData.value.map(d => d.strength)
-  chartInstance.setOption({
-    grid: { left: 50, right: 20, top: 20, bottom: 30 },
-    xAxis: { type: 'category', data: days, name: '天数' },
-    yAxis: { type: 'value', min: 0, max: 1, name: '强度' },
-    series: [{
-      data: strengths,
-      type: 'line',
-      smooth: true,
-      lineStyle: { color: '#2563EB', width: 2 },
-      areaStyle: { color: 'rgba(37, 99, 235, 0.1)' },
-    }],
-    tooltip: { trigger: 'axis' },
-  })
-}
+   if (!chartRef.value || !decayData.value || decayData.value.length === 0) return;
+
+   // 销毁旧图表实例
+   if (chartInstance) {
+       chartInstance.dispose();
+       chartInstance = null;
+   }
+
+   chartInstance = echarts.init(chartRef.value);
+   const days = decayData.value.map((d: any) => d.days);
+   const strengths = decayData.value.map((d: any) => d.strength);
+
+   chartInstance.setOption({
+       grid: { left: 50, right: 20, top: 20, bottom: 30 },
+       xAxis: { type: 'category', data: days, name: '天数' },
+       yAxis: { type: 'value', min: 0, max: 1, name: '强度' },
+       series: [{
+           data: strengths,
+           type: 'line',
+           smooth: true,
+           lineStyle: { color: '#2563EB', width: 2 },
+           areaStyle: { color: 'rgba(37, 99, 235, 0.1)' },
+       }],
+       tooltip: { trigger: 'axis' },
+   });
+};
 
 onMounted(() => {
   store.fetchMemories()
