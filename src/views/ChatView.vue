@@ -3,14 +3,29 @@
     <!-- ========== 左侧：对话主区域 ========== -->
     <div class="flex-1 flex flex-col min-w-0 pr-4">
       <!-- 顶部栏 -->
+  
+
       <div class="flex items-center justify-between mb-4">
+       
         <input
           v-model="currentSessionName"
           @blur="saveSessionName"
           :placeholder="$t('chat.sessionDefaultName')"
           class="text-lg font-medium bg-transparent border-none outline-none p-0"
         />
+
+        
         <div class="flex items-center space-x-3">
+           <!-- Agent 选择器 -->
+          <select
+            v-model="selectedAgentId"
+            class="border border-border-light rounded-button px-3 py-1.5 text-sm bg-white focus:outline-none"
+          >
+            <option value="">默认助手</option>
+            <option v-for="agent in agentList" :key="agent.id" :value="agent.id">
+              {{ agent.name }}
+            </option>
+          </select>
           <!-- 流式模式切换 -->
           <div class="flex items-center space-x-2">
             <span class="text-xs text-text-secondary">{{ $t('chat.streamMode') }}</span>
@@ -20,6 +35,8 @@
             {{ sidebarOpen ? $t('chat.hideHistory') : $t('chat.showHistory') }}
           </button>
         </div>
+
+        
       </div>
 
       <!-- 消息列表 -->
@@ -121,7 +138,20 @@ import MessageBubble from '@/components/chat/MessageBubble.vue'
 import StreamingMessage from '@/components/chat/StreamingMessage.vue'
 import RippleChart from '@/components/chat/RippleChart.vue'
 import Toggle from '@/components/ui/Toggle.vue'
+import { agentApi } from '@/api/agent'
 
+const selectedAgentId = ref('')  // 空字符串表示默认
+const agentList = ref<{ id: string; name: string }[]>([])
+
+onMounted(async () => {
+  try {
+    const res = await agentApi.list()
+    const data = res.data?.data || res.data || []
+    agentList.value = data.map((a: any) => ({ id: a.id, name: a.name }))
+  } catch (e) {
+    console.error('获取 Agent 列表失败', e)
+  }
+})
 const { t } = useI18n()
 const chatStore = useChatStore()
 const { sessions, currentSessionId, messages, isLoading } = storeToRefs(chatStore)
@@ -129,11 +159,13 @@ const { sessions, currentSessionId, messages, isLoading } = storeToRefs(chatStor
 const inputText = ref('')
 const streamMode = ref(true)
 const sidebarOpen = ref(true)
-const messageContainer = ref<HTMLElement>()
+const messageContainer = ref<HTMLElement | null>(null)
+
+// selected agent id for non-stream requests (bound to <select v-model="selectedAgentId">)
 
 const isStreaming = ref(false)
 const streamingToken = ref('')
-const streamingRef = ref<InstanceType<typeof StreamingMessage> | null>(null)
+const streamingRef = ref<any>(null)
 
 let abortController: AbortController | null = null
 
@@ -219,10 +251,13 @@ const handleSend = async () => {
   chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), userMsg]
   inputText.value = ''
 
+  // 获取当前选中的 agentId（空字符串表示默认助手）
+  const agentId = selectedAgentId.value || undefined
+
   if (streamMode.value) {
-    await sendStream(sessionId, text)
+    await sendStream(sessionId, text, agentId)   // ← 新增参数
   } else {
-    await sendNonStream(sessionId, text)
+    await sendNonStream(sessionId, text, agentId) // ← 新增参数
   }
 
   if ((chatStore.messagesMap[sessionId]?.length || 0) <= 2) {
@@ -232,7 +267,7 @@ const handleSend = async () => {
 }
 
 // ---------- 流式 SSE ----------
-const sendStream = async (sessionId: string, text: string) => {
+const sendStream = async (sessionId: string, text: string, agentId?: string) => {
   isStreaming.value = true
   streamingToken.value = ''
   clearStreaming()
@@ -241,13 +276,15 @@ const sendStream = async (sessionId: string, text: string) => {
   const signal = abortController.signal
 
   try {
+     // ★ 请求体中加入 agentId
+    const body = JSON.stringify({ sessionId, message: text, agentId })
     const response = await fetch('/api/v1/chat/stream', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-User-Id': localStorage.getItem('userId') || 'default-user',
       },
-      body: JSON.stringify({ sessionId, message: text }),
+       body,  
       signal,
     })
 
@@ -349,10 +386,11 @@ const extractToken = (raw: string): string => {
 }
 
 // ---------- 非流式 ----------
-const sendNonStream = async (sessionId: string, text: string) => {
+const sendNonStream = async (sessionId: string, text: string, agentId?: string) => {
   isLoading.value = true
   try {
-    const res = await chatApi.send({ sessionId, message: text })
+   // ★ 调用 chatApi.send 时传入 agentId
+    const res = await chatApi.send({ sessionId, message: text, agentId })
     const assistantMsg = {
       id: crypto.randomUUID(),
       role: 'assistant' as const,

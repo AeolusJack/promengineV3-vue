@@ -3,6 +3,7 @@ import client from './client'
 export interface ChatRequest {
   sessionId: string
   message: string
+  agentId?: string   // ← 新增可选参数
 }
 
 export interface ChatResponse {
