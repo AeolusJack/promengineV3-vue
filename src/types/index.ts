@@ -5,6 +5,7 @@ export interface Message {
   timestamp: number
   toolCalls?: ToolCall[]
   thinkingTrace?: ThinkingTrace
+  executionId?: string   // ★ 新增
 }
 
 export interface ToolCall {
@@ -64,3 +65,13 @@ export interface GroupAgent {
   avatar?: string
   role?: string
 }
+
+export interface ReActStepEvent {
+  type: 'THINKING' | 'TOOL_CALL' | 'TOOL_RESULT' | 'RETRY' | 'ERROR' | 'COMPLETE'
+  stepNumber: number
+  title: string
+  detail?: string
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED'
+  timestamp: number
+}
+

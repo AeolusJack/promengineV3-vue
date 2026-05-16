@@ -55,17 +55,19 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import Drawer from '@/components/ui/Drawer.vue'
+import { toolApi } from '@/api/tools'
 import type { ToolInfo } from '@/api/tools'
 
 const props = defineProps<{ tool: ToolInfo }>()
 const emit = defineEmits<{
   (e: 'close'): void
-  (e: 'execute', toolName: string, params: Record<string, any>): Promise<string>
+  (e: 'execute', toolName: string, params: Record<string, any>): Promise<string>  // 可保留，不再使用
 }>()
 
 const executing = ref(false)
 const result = ref<string | null>(null)
 
+// 初始化表单值
 const formValues = reactive<Record<string, any>>({})
 props.tool.parameters.forEach(p => {
   if (p.type === 'boolean') {
@@ -81,7 +83,9 @@ props.tool.parameters.forEach(p => {
 
 const handleExecute = async () => {
   executing.value = true
+  result.value = null
   try {
+    // 组装参数对象
     const params: Record<string, any> = {}
     for (const p of props.tool.parameters) {
       let value = formValues[p.name]
@@ -89,13 +93,22 @@ const handleExecute = async () => {
         try {
           value = JSON.parse(value)
         } catch (e) {
-          // keep as string
+          // 保持原始字符串
         }
       }
       params[p.name] = value
     }
-    const res = await emit('execute', props.tool.name, params)
-    result.value = res
+    const res = await toolApi.test(props.tool.name, params)
+    // 提取结果：根据后端 ApiResponse 格式，结果在 data.data.result
+    const responseData = res.data
+    if (responseData && responseData.success) {
+      result.value = responseData.data?.result ?? '执行完成（无返回结果）'
+    } else {
+      result.value = responseData?.error || '请求失败'
+    }
+  } catch (e: any) {
+    console.error('工具执行失败', e)
+    result.value = '执行失败：' + (e.message || e)
   } finally {
     executing.value = false
   }

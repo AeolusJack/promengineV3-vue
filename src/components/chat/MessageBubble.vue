@@ -9,7 +9,7 @@
             : 'bg-white border-border-light',
         ]"
       >
-        <!-- 助手：Markdown 渲染（整体渲染） -->
+        <!-- 助手：Markdown 渲染 -->
         <div
           v-if="message.role === 'assistant'"
           class="prose prose-sm max-w-none"
@@ -66,10 +66,18 @@
         </div>
       </div>
 
-      <!-- 操作菜单 -->
-      <div
-        class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity"
-      >
+      <!-- 右上角操作菜单 -->
+      <div class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1">
+        <!-- 执行过程按钮（仅当消息有 executionId 时显示） -->
+        <button
+          v-if="message.executionId"
+          @click="emit('showExecution', message.executionId)"
+          class="p-1.5 rounded hover:bg-hover-bg"
+          title="查看执行过程"
+        >
+          <GitBranch class="w-4 h-4 text-text-secondary" />
+        </button>
+        <!-- 原有更多操作菜单 -->
         <ContentActionMenu
           :content="message.content"
           :message-id="message.id"
@@ -85,7 +93,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Brain } from 'lucide-vue-next'
+import { Brain, GitBranch } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/types'
 import ContentActionMenu from './ContentActionMenu.vue'
@@ -101,12 +109,12 @@ const emit = defineEmits<{
   (e: 'exportImage', content: string): void
   (e: 'exportPdf', content: string): void
   (e: 'share', messageId: string): void
+  (e: 'showExecution', executionId: string): void
 }>()
 
 const { t } = useI18n()
 const showThinking = ref(false)
 
-// 整体渲染
 const safeContent = computed(() => renderMarkdown(props.message.content))
 
 const formatArgs = (args: Record<string, any>) => {

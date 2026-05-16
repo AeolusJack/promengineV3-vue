@@ -3,25 +3,20 @@
     <!-- ========== 左侧：对话主区域 ========== -->
     <div class="flex-1 flex flex-col min-w-0 pr-4">
       <!-- 顶部栏 -->
-  
-
       <div class="flex items-center justify-between mb-4">
-       
         <input
           v-model="currentSessionName"
           @blur="saveSessionName"
           :placeholder="$t('chat.sessionDefaultName')"
           class="text-lg font-medium bg-transparent border-none outline-none p-0"
         />
-
-        
         <div class="flex items-center space-x-3">
-           <!-- Agent 选择器 -->
+          <!-- Agent 选择器 -->
           <select
             v-model="selectedAgentId"
             class="border border-border-light rounded-button px-3 py-1.5 text-sm bg-white focus:outline-none"
           >
-            <option value="">默认助手</option>
+            <option value="">{{ $t('chat.defaultAssistant') }}</option>
             <option v-for="agent in agentList" :key="agent.id" :value="agent.id">
               {{ agent.name }}
             </option>
@@ -31,12 +26,14 @@
             <span class="text-xs text-text-secondary">{{ $t('chat.streamMode') }}</span>
             <Toggle v-model="streamMode" />
           </div>
+          <!-- 执行过程面板开关 -->
+          <button @click="showFlowChart = !showFlowChart" class="btn-secondary text-sm px-3 py-1.5">
+            {{ showFlowChart ? $t('chat.hideProcess') : $t('chat.showProcess') }}
+          </button>
           <button @click="toggleSidebar" class="btn-secondary text-sm px-3 py-1.5">
             {{ sidebarOpen ? $t('chat.hideHistory') : $t('chat.showHistory') }}
           </button>
         </div>
-
-        
       </div>
 
       <!-- 消息列表 -->
@@ -49,6 +46,7 @@
           @export-image="handleExportImage"
           @export-pdf="handleExportPdf"
           @share="handleShare"
+          @show-execution="handleShowExecution"
         />
 
         <!-- 流式实时渲染 -->
@@ -123,6 +121,14 @@
         </div>
       </div>
     </transition>
+
+    <!-- ========== 右侧执行过程面板 ========== -->
+    <div v-if="showFlowChart" class="w-72 pl-4 border-l overflow-y-auto">
+      <ReActFlowChart
+        :execution-id="currentViewExecutionId"
+        ref="flowChartRef"
+      />
+    </div>
   </div>
 </template>
 
@@ -134,44 +140,93 @@ import { useChatStore } from '@/stores/chat'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { memoryApi } from '@/api/memory'
 import { chatApi } from '@/api/chat'
+import { agentApi } from '@/api/agent'
+import { sessionApi } from '@/api/session'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import StreamingMessage from '@/components/chat/StreamingMessage.vue'
 import RippleChart from '@/components/chat/RippleChart.vue'
 import Toggle from '@/components/ui/Toggle.vue'
-import { agentApi } from '@/api/agent'
+import ReActFlowChart from '@/components/flow/ReActFlowChart.vue'
 
-const selectedAgentId = ref('')  // 空字符串表示默认
-const agentList = ref<{ id: string; name: string }[]>([])
-
-onMounted(async () => {
-  try {
-    const res = await agentApi.list()
-    const data = res.data?.data || res.data || []
-    agentList.value = data.map((a: any) => ({ id: a.id, name: a.name }))
-  } catch (e) {
-    console.error('获取 Agent 列表失败', e)
-  }
-})
 const { t } = useI18n()
 const chatStore = useChatStore()
-const { sessions, currentSessionId, messages, isLoading } = storeToRefs(chatStore)
+const { sessions, currentSessionId, isLoading } = storeToRefs(chatStore)
+
+const messages = computed(() => {
+  const id = currentSessionId.value
+  return id ? (chatStore.messagesMap[id] || []) : []
+})
+
+const { rippleEvents, connect: connectRipple, disconnect: disconnectRipple, on, off } = useWebSocket()
+
+const flowChartRef = ref<any>(null)
+const streamingRef = ref<any>(null)
+
+// 面板显示状态（默认显示，可从后端配置恢复）
+const showFlowChart = ref(true)
+const currentViewExecutionId = ref<string | null>(null)
+const latestExecutionId = ref<string | null>(null)
+const executionStepsMap = ref<Record<string, any[]>>({})
 
 const inputText = ref('')
 const streamMode = ref(true)
 const sidebarOpen = ref(true)
 const messageContainer = ref<HTMLElement | null>(null)
 
-// selected agent id for non-stream requests (bound to <select v-model="selectedAgentId">)
+const selectedAgentId = ref('')
+const agentList = ref<{ id: string; name: string }[]>([])
 
 const isStreaming = ref(false)
 const streamingToken = ref('')
-const streamingRef = ref<any>(null)
-
 let abortController: AbortController | null = null
 
-const { rippleEvents, connect: connectRipple, disconnect: disconnectRipple } = useWebSocket()
+// ===================== WebSocket 事件处理 =====================
+// 注意：后端只推送 react_step 类型，没有 EXECUTION_START
+on('react_step', (data: any) => {
+  const event = data?.data
+  if (!event || !event.executionId) return
+  const eid = event.executionId
 
-// 当前会话名称
+  // 缓存到 executionStepsMap
+  if (!executionStepsMap.value[eid]) {
+    executionStepsMap.value[eid] = []
+  }
+  const exists = executionStepsMap.value[eid].some(
+    s => s.type === event.type && s.stepNumber === event.stepNumber && s.timestamp === event.timestamp
+  )
+  if (!exists) {
+    executionStepsMap.value[eid].push(event)
+  }
+
+  // 关键修改：如果右侧面板打开且当前没有正在查看的 executionId，则自动设为这个 eid
+  if (showFlowChart.value && !currentViewExecutionId.value) {
+    currentViewExecutionId.value = eid
+  }
+
+  // 如果当前面板显示的 executionId 匹配，则实时添加步骤
+  if (currentViewExecutionId.value === eid && flowChartRef.value) {
+    flowChartRef.value.addStep(event)
+  }
+})
+
+on('review_request', (data: any) => {
+  const { reviewId, request } = data
+  if (confirm(`请求: ${request.title}\n内容: ${request.content}`)) {
+    fetch(`/api/v1/reviews/${reviewId}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'approve' })
+    })
+  } else {
+    fetch(`/api/v1/reviews/${reviewId}/decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision: 'reject' })
+    })
+  }
+})
+
+// ===================== 会话名称与切换 =====================
 const currentSessionName = computed({
   get() {
     const session = sessions.value.find(s => s.id === currentSessionId.value)
@@ -194,38 +249,27 @@ watch(currentSessionId, (newId) => {
   if (newId) connectRipple(newId)
 }, { immediate: true })
 
+// ===================== 自动滚动 =====================
 const scrollToBottom = async () => {
   await nextTick()
   if (messageContainer.value) {
     messageContainer.value.scrollTop = messageContainer.value.scrollHeight
   }
 }
-watch(() => messages.value.length, scrollToBottom)
-watch(streamingToken, () => {
-  if (isStreaming.value) scrollToBottom()
-})
+watch(messages, () => { nextTick(() => scrollToBottom()) }, { deep: true })
+watch(streamingToken, () => { if (isStreaming.value) scrollToBottom() })
 
-onMounted(async () => {
-  await chatStore.fetchSessions()
-  if (!currentSessionId.value && sessions.value.length > 0) {
-    await chatStore.switchSession(sessions.value[0].id)
-  } else if (!currentSessionId.value) {
-    chatStore.initSession()
-  }
-})
-
-onUnmounted(() => {
-  if (abortController) abortController.abort()
-})
-
+// ===================== 会话操作 =====================
 const toggleSidebar = () => {
   sidebarOpen.value = !sidebarOpen.value
 }
+
 const newSession = () => {
   chatStore.initSession()
   streamingToken.value = ''
   clearStreaming()
 }
+
 const switchSession = (id: string) => {
   chatStore.switchSession(id)
   streamingToken.value = ''
@@ -236,74 +280,103 @@ const clearStreaming = () => {
   streamingRef.value?.clear()
 }
 
-// ---------- 发送 ----------
+// ===================== 查看执行过程 =====================
+const handleShowExecution = (executionId: string) => {
+  currentViewExecutionId.value = executionId
+  showFlowChart.value = true
+}
+
+// ===================== 面板状态持久化 =====================
+const savePanelState = async (visible: boolean) => {
+  try {
+    await fetch('/api/v1/settings', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-User-Id': localStorage.getItem('userId') || 'default-user',
+      },
+      body: JSON.stringify({ showExecutionPanel: visible }),
+    })
+  } catch (e) {
+    console.error('保存面板状态失败', e)
+  }
+}
+
+watch(showFlowChart, (val) => {
+  savePanelState(val)
+})
+
+// ===================== 发送消息 =====================
 const handleSend = async () => {
   const text = inputText.value.trim()
   if (!text || isStreaming.value || isLoading.value) return
+  if (!currentSessionId.value) chatStore.initSession()
+  const sessionId = currentSessionId.value!
 
-  const sessionId = chatStore.currentSessionId || chatStore.initSession()
+  // 确保 WebSocket 已连接，避免错过实时步骤推送
+  await connectRipple(sessionId)
+
+  const executionId = crypto.randomUUID()
   const userMsg = {
     id: crypto.randomUUID(),
     role: 'user' as const,
     content: text,
     timestamp: Date.now(),
+    executionId,
   }
   chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), userMsg]
   inputText.value = ''
 
-  // 获取当前选中的 agentId（空字符串表示默认助手）
   const agentId = selectedAgentId.value || undefined
-
   if (streamMode.value) {
-    await sendStream(sessionId, text, agentId)   // ← 新增参数
+    await sendStream(sessionId, text, agentId, executionId)
   } else {
-    await sendNonStream(sessionId, text, agentId) // ← 新增参数
+    await sendNonStream(sessionId, text, agentId, executionId)
   }
-
   if ((chatStore.messagesMap[sessionId]?.length || 0) <= 2) {
     const autoName = text.length > 20 ? text.slice(0, 20) + '…' : text
     await chatStore.updateSessionName(sessionId, autoName)
   }
 }
-
-// ---------- 流式 SSE ----------
-const sendStream = async (sessionId: string, text: string, agentId?: string) => {
+// ===================== 流式发送实现 =====================
+const sendStream = async (sessionId: string, text: string, agentId?: string, executionId?: string) => {
   isStreaming.value = true
   streamingToken.value = ''
   clearStreaming()
-
   abortController = new AbortController()
   const signal = abortController.signal
-
   try {
-     // ★ 请求体中加入 agentId
-    const body = JSON.stringify({ sessionId, message: text, agentId })
+    // 构建请求头
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    const token = localStorage.getItem('token')
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+    } else {
+      // 未登录时回退到默认用户（兼容旧逻辑）
+      headers['X-User-Id'] = 'default-user'
+    }
+
+    const body = JSON.stringify({ sessionId, message: text, agentId, executionId })
     const response = await fetch('/api/v1/chat/stream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': localStorage.getItem('userId') || 'default-user',
-      },
-       body,  
+      headers,
+      body,
       signal,
     })
-
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No reader')
-
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
     let fullContent = ''
-
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split('\n\n')
       buffer = events.pop() || ''
-
       for (const event of events) {
         if (!event.trim()) continue
         const lines = event.split('\n')
@@ -323,8 +396,6 @@ const sendStream = async (sessionId: string, text: string, agentId?: string) => 
         }
       }
     }
-
-    // 处理剩余 buffer
     if (buffer.trim()) {
       const lines = buffer.split('\n')
       const dataLines: string[] = []
@@ -341,18 +412,14 @@ const sendStream = async (sessionId: string, text: string, agentId?: string) => 
         }
       }
     }
-
-    // 流结束 -> 保存完整助手消息
     const assistantMsg = {
       id: crypto.randomUUID(),
       role: 'assistant' as const,
       content: fullContent.trim() || t('chat.emptyResponse'),
       timestamp: Date.now(),
+      executionId,
     }
-    chatStore.messagesMap[sessionId] = [
-      ...(chatStore.messagesMap[sessionId] || []),
-      assistantMsg,
-    ]
+    chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), assistantMsg]
   } catch (err: any) {
     if (err.name === 'AbortError') return
     console.error('Stream error:', err)
@@ -363,6 +430,7 @@ const sendStream = async (sessionId: string, text: string, agentId?: string) => 
         role: 'assistant' as const,
         content: t('chat.errorMessage'),
         timestamp: Date.now(),
+        executionId,
       },
     ]
   } finally {
@@ -370,7 +438,6 @@ const sendStream = async (sessionId: string, text: string, agentId?: string) => 
     abortController = null
   }
 }
-
 const extractToken = (raw: string): string => {
   try {
     const obj = JSON.parse(raw)
@@ -385,22 +452,19 @@ const extractToken = (raw: string): string => {
   }
 }
 
-// ---------- 非流式 ----------
-const sendNonStream = async (sessionId: string, text: string, agentId?: string) => {
+// ===================== 非流式 =====================
+const sendNonStream = async (sessionId: string, text: string, agentId?: string, executionId?: string) => {
   isLoading.value = true
   try {
-   // ★ 调用 chatApi.send 时传入 agentId
-    const res = await chatApi.send({ sessionId, message: text, agentId })
+    const res = await chatApi.send({ sessionId, message: text, agentId, executionId })
     const assistantMsg = {
       id: crypto.randomUUID(),
       role: 'assistant' as const,
       content: res.data.text,
       timestamp: Date.now(),
+      executionId,
     }
-    chatStore.messagesMap[sessionId] = [
-      ...(chatStore.messagesMap[sessionId] || []),
-      assistantMsg,
-    ]
+    chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), assistantMsg]
   } catch (err) {
     console.error('Non-stream error:', err)
     chatStore.messagesMap[sessionId] = [
@@ -410,6 +474,7 @@ const sendNonStream = async (sessionId: string, text: string, agentId?: string) 
         role: 'assistant' as const,
         content: t('chat.errorMessage'),
         timestamp: Date.now(),
+        executionId,
       },
     ]
   } finally {
@@ -417,7 +482,7 @@ const sendNonStream = async (sessionId: string, text: string, agentId?: string) 
   }
 }
 
-// ---------- 记忆 / 导出 / 分享 ----------
+// ===================== 记忆/导出/分享 =====================
 const handleSaveToMemory = async (content: string) => {
   try {
     await memoryApi.remember(content, { source: 'chat', sessionId: currentSessionId.value })
@@ -453,8 +518,43 @@ const handleShare = (messageId: string) => {
   navigator.clipboard?.writeText(shareUrl)
   alert(t('chat.shareCopied'))
 }
-</script>
 
+// ===================== 生命周期 =====================
+onMounted(async () => {
+  await chatStore.fetchSessions()
+  if (!currentSessionId.value && sessions.value.length > 0) {
+    await chatStore.switchSession(sessions.value[0].id)
+  } else if (!currentSessionId.value) {
+    chatStore.initSession()
+  }
+
+  // 恢复面板状态
+  try {
+    const res = await fetch('/api/v1/config?userId=' + (localStorage.getItem('userId') || 'default-user'))
+    const data = await res.json()
+    if (data.success && data.data?.settings?.showExecutionPanel !== undefined) {
+      showFlowChart.value = data.data.settings.showExecutionPanel
+    }
+  } catch (e) {
+    // 默认显示
+  }
+
+  // 加载 Agent 列表
+  try {
+    const res = await agentApi.list()
+    const data = res.data?.data || res.data || []
+    agentList.value = data.map((a: any) => ({ id: a.id, name: a.name }))
+  } catch (e) {
+    console.error('获取 Agent 列表失败', e)
+  }
+})
+
+onUnmounted(() => {
+  if (abortController) abortController.abort()
+  off('react_step')
+  off('review_request')
+})
+</script>
 <style scoped>
 .slide-enter-active,
 .slide-leave-active {
