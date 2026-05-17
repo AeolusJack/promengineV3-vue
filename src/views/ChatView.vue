@@ -141,12 +141,13 @@ import { useWebSocket } from '@/composables/useWebSocket'
 import { memoryApi } from '@/api/memory'
 import { chatApi } from '@/api/chat'
 import { agentApi } from '@/api/agent'
-import { sessionApi } from '@/api/session'
 import MessageBubble from '@/components/chat/MessageBubble.vue'
 import StreamingMessage from '@/components/chat/StreamingMessage.vue'
 import RippleChart from '@/components/chat/RippleChart.vue'
 import Toggle from '@/components/ui/Toggle.vue'
 import ReActFlowChart from '@/components/flow/ReActFlowChart.vue'
+import { v4 as uuidv4 } from 'uuid'
+import client from '@/api/client'
 
 const { t } = useI18n()
 const chatStore = useChatStore()
@@ -162,7 +163,6 @@ const { rippleEvents, connect: connectRipple, disconnect: disconnectRipple, on, 
 const flowChartRef = ref<any>(null)
 const streamingRef = ref<any>(null)
 
-// 面板显示状态（默认显示，可从后端配置恢复）
 const showFlowChart = ref(true)
 const currentViewExecutionId = ref<string | null>(null)
 const latestExecutionId = ref<string | null>(null)
@@ -181,13 +181,11 @@ const streamingToken = ref('')
 let abortController: AbortController | null = null
 
 // ===================== WebSocket 事件处理 =====================
-// 注意：后端只推送 react_step 类型，没有 EXECUTION_START
 on('react_step', (data: any) => {
   const event = data?.data
   if (!event || !event.executionId) return
   const eid = event.executionId
 
-  // 缓存到 executionStepsMap
   if (!executionStepsMap.value[eid]) {
     executionStepsMap.value[eid] = []
   }
@@ -198,12 +196,10 @@ on('react_step', (data: any) => {
     executionStepsMap.value[eid].push(event)
   }
 
-  // 关键修改：如果右侧面板打开且当前没有正在查看的 executionId，则自动设为这个 eid
   if (showFlowChart.value && !currentViewExecutionId.value) {
     currentViewExecutionId.value = eid
   }
 
-  // 如果当前面板显示的 executionId 匹配，则实时添加步骤
   if (currentViewExecutionId.value === eid && flowChartRef.value) {
     flowChartRef.value.addStep(event)
   }
@@ -226,7 +222,7 @@ on('review_request', (data: any) => {
   }
 })
 
-// ===================== 会话名称与切换 =====================
+// ===================== 会话管理 =====================
 const currentSessionName = computed({
   get() {
     const session = sessions.value.find(s => s.id === currentSessionId.value)
@@ -280,7 +276,6 @@ const clearStreaming = () => {
   streamingRef.value?.clear()
 }
 
-// ===================== 查看执行过程 =====================
 const handleShowExecution = (executionId: string) => {
   currentViewExecutionId.value = executionId
   showFlowChart.value = true
@@ -289,14 +284,7 @@ const handleShowExecution = (executionId: string) => {
 // ===================== 面板状态持久化 =====================
 const savePanelState = async (visible: boolean) => {
   try {
-    await fetch('/api/v1/settings', {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-Id': localStorage.getItem('userId') || 'default-user',
-      },
-      body: JSON.stringify({ showExecutionPanel: visible }),
-    })
+    await client.put('/settings', { showExecutionPanel: visible })
   } catch (e) {
     console.error('保存面板状态失败', e)
   }
@@ -313,12 +301,11 @@ const handleSend = async () => {
   if (!currentSessionId.value) chatStore.initSession()
   const sessionId = currentSessionId.value!
 
-  // 确保 WebSocket 已连接，避免错过实时步骤推送
   await connectRipple(sessionId)
 
-  const executionId = crypto.randomUUID()
+  const executionId = uuidv4()
   const userMsg = {
-    id: crypto.randomUUID(),
+    id: uuidv4(),
     role: 'user' as const,
     content: text,
     timestamp: Date.now(),
@@ -333,30 +320,63 @@ const handleSend = async () => {
   } else {
     await sendNonStream(sessionId, text, agentId, executionId)
   }
+
   if ((chatStore.messagesMap[sessionId]?.length || 0) <= 2) {
     const autoName = text.length > 20 ? text.slice(0, 20) + '…' : text
     await chatStore.updateSessionName(sessionId, autoName)
   }
 }
-// ===================== 流式发送实现 =====================
+
+// ===================== 流式发送 =====================
 const sendStream = async (sessionId: string, text: string, agentId?: string, executionId?: string) => {
   isStreaming.value = true
   streamingToken.value = ''
   clearStreaming()
   abortController = new AbortController()
   const signal = abortController.signal
+
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+  let fullContent = ''
+  let doneReceived = false
+  let firstDataReceived = false
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  let globalTimeout: ReturnType<typeof setTimeout> | null = null
+  let saved = false
+
+  const clearIdleTimer = () => {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = null
+  }
+
+  const startIdleTimer = () => {
+    clearIdleTimer()
+    idleTimer = setTimeout(() => {
+      if (!doneReceived && firstDataReceived) {
+        console.warn('30秒无新数据，主动中断，保留已接收内容')
+        abortController?.abort()
+      }
+    }, 30000)
+  }
+
+  const saveContentIfNeeded = (content: string) => {
+    if (saved) return
+    saved = true
+    const finalContent = content.trim() || t('chat.emptyResponse')
+    const assistantMsg = {
+      id: uuidv4(),
+      role: 'assistant' as const,
+      content: finalContent,
+      timestamp: Date.now(),
+      executionId,
+    }
+    chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), assistantMsg]
+  }
+
   try {
-    // 构建请求头
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    }
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     const token = localStorage.getItem('token')
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    } else {
-      // 未登录时回退到默认用户（兼容旧逻辑）
-      headers['X-User-Id'] = 'default-user'
-    }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    else headers['X-User-Id'] = 'default-user'
 
     const body = JSON.stringify({ sessionId, message: text, agentId, executionId })
     const response = await fetch('/api/v1/chat/stream', {
@@ -366,78 +386,89 @@ const sendStream = async (sessionId: string, text: string, agentId?: string, exe
       signal,
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error('No reader')
+
+    reader = response.body!.getReader()
     const decoder = new TextDecoder('utf-8')
     let buffer = ''
-    let fullContent = ''
-    while (true) {
+
+    globalTimeout = setTimeout(() => {
+      if (!firstDataReceived && !doneReceived) {
+        console.warn('连接后60秒无任何数据，中断')
+        abortController?.abort()
+      }
+    }, 600000)
+
+    while (!doneReceived) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        console.warn('连接正常关闭，未收到[DONE]')
+        break
+      }
+
       buffer += decoder.decode(value, { stream: true })
       const events = buffer.split('\n\n')
       buffer = events.pop() || ''
+
       for (const event of events) {
-        if (!event.trim()) continue
         const lines = event.split('\n')
-        const dataLines: string[] = []
+        let dataStr = ''
         for (const line of lines) {
-          if (line.startsWith('data: ')) dataLines.push(line.slice(6))
-          else if (line.startsWith('data:')) dataLines.push(line.slice(5))
+          if (line.startsWith('data: ')) dataStr = line.slice(6).trim()
+          else if (line.startsWith('data:')) dataStr = line.slice(5).trim()
+          if (dataStr) break
         }
-        const dataStr = dataLines.join('\n')
-        if (dataStr === '[DONE]') continue
-        if (dataStr) {
-          const token = extractToken(dataStr.trim())
-          if (token) {
-            fullContent += token
-            streamingToken.value = token
-          }
+        if (!dataStr) continue
+
+        if (dataStr === '[DONE]') {
+          doneReceived = true
+          break
         }
-      }
-    }
-    if (buffer.trim()) {
-      const lines = buffer.split('\n')
-      const dataLines: string[] = []
-      for (const line of lines) {
-        if (line.startsWith('data: ')) dataLines.push(line.slice(6))
-        else if (line.startsWith('data:')) dataLines.push(line.slice(5))
-      }
-      const dataStr = dataLines.join('\n')
-      if (dataStr && dataStr !== '[DONE]') {
-        const token = extractToken(dataStr.trim())
+
+        if (!firstDataReceived) {
+          firstDataReceived = true
+          if (globalTimeout) clearTimeout(globalTimeout)
+        }
+        startIdleTimer()
+
+        const token = extractToken(dataStr)
         if (token) {
           fullContent += token
           streamingToken.value = token
         }
       }
     }
-    const assistantMsg = {
-      id: crypto.randomUUID(),
-      role: 'assistant' as const,
-      content: fullContent.trim() || t('chat.emptyResponse'),
-      timestamp: Date.now(),
-      executionId,
-    }
-    chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), assistantMsg]
+
+    saveContentIfNeeded(fullContent)
   } catch (err: any) {
-    if (err.name === 'AbortError') return
-    console.error('Stream error:', err)
-    chatStore.messagesMap[sessionId] = [
-      ...(chatStore.messagesMap[sessionId] || []),
-      {
-        id: crypto.randomUUID(),
-        role: 'assistant' as const,
-        content: t('chat.errorMessage'),
-        timestamp: Date.now(),
-        executionId,
-      },
-    ]
+    if (err.name === 'AbortError') {
+      console.warn('流式连接被主动中断')
+      if (fullContent) saveContentIfNeeded(fullContent)
+    } else {
+      console.error('流式错误:', err)
+      if (fullContent) {
+        saveContentIfNeeded(fullContent)
+      } else {
+        const assistantMsg = {
+          id: uuidv4(),
+          role: 'assistant' as const,
+          content: t('chat.errorMessage'),
+          timestamp: Date.now(),
+          executionId,
+        }
+        chatStore.messagesMap[sessionId] = [...(chatStore.messagesMap[sessionId] || []), assistantMsg]
+      }
+    }
   } finally {
+    clearIdleTimer()
+    if (globalTimeout) clearTimeout(globalTimeout)
+    if (reader) {
+      try { await reader.cancel() } catch(e) {}
+    }
     isStreaming.value = false
     abortController = null
   }
 }
+
 const extractToken = (raw: string): string => {
   try {
     const obj = JSON.parse(raw)
@@ -456,9 +487,11 @@ const extractToken = (raw: string): string => {
 const sendNonStream = async (sessionId: string, text: string, agentId?: string, executionId?: string) => {
   isLoading.value = true
   try {
-    const res = await chatApi.send({ sessionId, message: text, agentId, executionId })
+    const payload: any = { sessionId, message: text, agentId }
+    if (executionId) payload.executionId = executionId
+    const res = await chatApi.send(payload)
     const assistantMsg = {
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       role: 'assistant' as const,
       content: res.data.text,
       timestamp: Date.now(),
@@ -469,13 +502,7 @@ const sendNonStream = async (sessionId: string, text: string, agentId?: string, 
     console.error('Non-stream error:', err)
     chatStore.messagesMap[sessionId] = [
       ...(chatStore.messagesMap[sessionId] || []),
-      {
-        id: crypto.randomUUID(),
-        role: 'assistant' as const,
-        content: t('chat.errorMessage'),
-        timestamp: Date.now(),
-        executionId,
-      },
+      { id: uuidv4(), role: 'assistant' as const, content: t('chat.errorMessage'), timestamp: Date.now(), executionId }
     ]
   } finally {
     isLoading.value = false
@@ -528,18 +555,16 @@ onMounted(async () => {
     chatStore.initSession()
   }
 
-  // 恢复面板状态
   try {
-    const res = await fetch('/api/v1/config?userId=' + (localStorage.getItem('userId') || 'default-user'))
-    const data = await res.json()
+    const res = await client.get('/config', {
+      params: { userId: localStorage.getItem('userId') || 'default-user' }
+    })
+    const data = res.data
     if (data.success && data.data?.settings?.showExecutionPanel !== undefined) {
       showFlowChart.value = data.data.settings.showExecutionPanel
     }
-  } catch (e) {
-    // 默认显示
-  }
+  } catch (e) {}
 
-  // 加载 Agent 列表
   try {
     const res = await agentApi.list()
     const data = res.data?.data || res.data || []
