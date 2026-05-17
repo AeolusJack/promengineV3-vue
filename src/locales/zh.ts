@@ -12,6 +12,7 @@ export default {
     success: '成功',
   },
   brand: '第三类探索',
+  brandTagline: '无尽探索，无限可能，重新定义智能体。',
   sidebar: {
     chat: '对话',
     memory: '记忆',

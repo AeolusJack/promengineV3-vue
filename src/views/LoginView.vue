@@ -3,16 +3,28 @@
     <!-- 装饰性背景 -->
     <div class="absolute top-0 left-0 w-full h-64 bg-gradient-to-r from-primary/5 to-transparent pointer-events-none" />
     <div class="absolute bottom-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
-
-    <!-- 主卡片 -->
+<!-- 主卡片 -->
     <div class="relative w-full max-w-md mx-4">
-      <!-- 品牌标识 -->
+      <!-- 品牌标识 (小鸟 + 文字 + 标语) -->
       <div class="text-center mb-8">
-        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary shadow-lg shadow-primary/20 mb-4">
-          <Bot class="w-8 h-8 text-white" />
+        <div class="inline-flex items-center justify-center space-x-2 mb-3">
+          <ExplorationBirdLogo :size="28" color="#2563EB" />
+          <span class="brand-text text-primary text-xl">{{ $t('brand') }}</span>
         </div>
-        <h1 class="text-2xl font-semibold text-text-primary">{{ isLogin ? $t('auth.welcomeBack') : $t('auth.createAccount') }}</h1>
-        <p class="text-sm text-text-secondary mt-1">{{ isLogin ? $t('auth.loginSubtitle') : $t('auth.registerSubtitle') }}</p>
+        <!-- 品牌标语 -->
+        <p class="text-sm text-text-secondary tracking-wider">
+          {{ $t('brandTagline') }}
+        </p>
+      </div>
+
+      <!-- 欢迎语 -->
+      <div class="text-center mb-6">
+        <h2 class="text-2xl font-semibold text-text-primary">
+          {{ isLogin ? $t('auth.welcomeBack') : $t('auth.createAccount') }}
+        </h2>
+        <p class="text-sm text-text-secondary mt-1">
+          {{ isLogin ? $t('auth.loginSubtitle') : $t('auth.registerSubtitle') }}
+        </p>
       </div>
 
       <!-- 表单卡片 -->
@@ -111,7 +123,8 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { Bot, User, Lock, Eye, EyeOff, AlertCircle, Loader2, Smile } from 'lucide-vue-next'
+import { User, Lock, Eye, EyeOff, AlertCircle, Loader2, Smile } from 'lucide-vue-next'
+import ExplorationBirdLogo from '@/components/icons/ThirdExplorationLogo.vue'
 import axios from 'axios'
 
 const { t } = useI18n()
@@ -159,10 +172,8 @@ const handleSubmit = async () => {
         localStorage.setItem('nickname', nickname || username)
         router.push('/chat')
       } else {
-        // 注册成功，自动切换回登录
         error.value = ''
         isLogin.value = true
-        // 可显示提示，或直接切换到登录
       }
     } else {
       error.value = data.error || t('auth.unknownError')
@@ -176,5 +187,9 @@ const handleSubmit = async () => {
 </script>
 
 <style scoped>
-/* 如有需要可添加自定义动画 */
+.brand-text {
+  font-family: 'Georgia', 'Times New Roman', 'STSong', 'SimSun', 'Songti SC', serif;
+  font-weight: 550;
+  letter-spacing: 0.04em;
+}
 </style>

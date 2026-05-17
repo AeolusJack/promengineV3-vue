@@ -12,6 +12,7 @@ export default {
     success: 'Success',
   },
   brand: 'PromEngine',
+  brandTagline: 'Wings of Exploration, Heart of Digital.',
   sidebar: {
     chat: 'Chat',
     memory: 'Memory',
