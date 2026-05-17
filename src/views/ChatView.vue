@@ -355,7 +355,7 @@ const sendStream = async (sessionId: string, text: string, agentId?: string, exe
         console.warn('30秒无新数据，主动中断，保留已接收内容')
         abortController?.abort()
       }
-    }, 30000)
+    }, 300000)
   }
 
   const saveContentIfNeeded = (content: string) => {
